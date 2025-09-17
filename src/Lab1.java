@@ -1,284 +1,234 @@
 import TSim.*;
-
-import javax.swing.text.Position;
-import java.sql.Connection;
-import java.util.*;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.*;
 
 public class Lab1 {
 
+  private final Train t1;
+  private final Train t2;
+
   public Lab1(int speed1, int speed2) {
-    Map.initialize();
 
-    Map.Track track1 = (Map.Track) Map.getSection(new Map.Position(15, 7));
-    Map.Track track2 = (Map.Track) Map.getSection(new Map.Position(5, 11));
+    // Semaforer = "låsta" spårsektioner
+    Semaphore topTop        = new Semaphore(0, true);
+    Semaphore topBottom     = new Semaphore(1, true);
+    Semaphore middleTop     = new Semaphore(1, true);
+    Semaphore middleBottom  = new Semaphore(1, true);
+    Semaphore bottomTop     = new Semaphore(0, true);
+    Semaphore bottomBottom  = new Semaphore(1, true);
+    Semaphore leftSide      = new Semaphore(1, true);
+    Semaphore rightSide     = new Semaphore(1, true);
+    Semaphore intersection  = new Semaphore(1, true);
 
-    Train train1 = new Train(1, speed1, Map.Direction.TowardsA, track1);
-    Train train2 = new Train(2, speed2, Map.Direction.TowardsB, track2);
+    t1 = new Train(1, speed1, Direction.DOWN,
+            topTop, topBottom, middleTop, middleBottom,
+            bottomTop, bottomBottom, leftSide, rightSide, intersection);
 
-    train1.start();
-    train2.start();
-  }
-}
+    t2 = new Train(2, speed2, Direction.UP,
+            topTop, topBottom, middleTop, middleBottom,
+            bottomTop, bottomBottom, leftSide, rightSide, intersection);
 
-class Train extends Thread {
-  private int id;
-  private int speed;
-  private Map.Track previousTrack;
-  private Map.Direction travelDirection;
-  private TSimInterface tsi = TSimInterface.getInstance();
-
-  public Train(int id, int speed, Map.Direction initialTravelDirection, Map.Track initialTrack) {
-    this.id = id;
-    this.speed = speed;
-    this.previousTrack = null;
-    this.travelDirection = initialTravelDirection;
-    initialTrack.acquire();
+    t1.start();
+    t2.start();
   }
 
-  @Override
-  public void run() {
-    try {
-      tsi.setSpeed(id, speed);
-      while (true) processSensorEvent(tsi.getSensor(this.id));
-    }
-    catch (Exception e) {
-      e.printStackTrace();
-      System.exit(1);
+  public enum Direction {
+    UP, DOWN;
+    public static Direction flip(Direction d) {
+      return (d == UP) ? DOWN : UP;
     }
   }
 
-  private void processSensorEvent(SensorEvent event) throws Exception {
-    Map.Position sensor = new Map.Position(event.getXpos(), event.getYpos());
-    Map.Section currentSection = Map.getSection(sensor);
+  private class Train extends Thread {
+    private final int id;
+    private int speed;
+    private Direction dir;
+    private final TSimInterface tsi = TSimInterface.getInstance();
 
-    if (currentSection instanceof  Map.Track) {
-      Map.Track currentTrack = (Map.Track) currentSection;
+    // alla semaforer
+    private final Semaphore topTop, topBottom, middleTop, middleBottom;
+    private final Semaphore bottomTop, bottomBottom, leftSide, rightSide, intersection;
 
-      if (event.getStatus() == SensorEvent.INACTIVE && reachedStartOfSection(currentTrack)) {
-        if (previousTrack != null) previousTrack.release();
-        previousTrack = null;
-      }
-      if (event.getStatus() == SensorEvent.ACTIVE && reachedEndOfSection(currentTrack)) {
-        tsi.setSpeed(id, 0);
-        if (currentTrack.acquireNextTrack()) {
-          previousTrack = currentTrack;
-        }
-        else {
-          waitAndTurnBack();
-        }
-        tsi.setSpeed(id, speed);
-      }
-    }
-    else {
-      if (event.getStatus() == SensorEvent.INACTIVE && reachedEndOfSection(currentSection)) {
-        currentSection.release();
-      }
-      if (event.getStatus() == SensorEvent.ACTIVE && reachedStartOfSection(currentSection)) {
-        tsi.setSpeed(id, 0);
-        currentSection.acquire();
-        tsi.setSpeed(id, speed);
-      }
-    }
-  }
-  private boolean reachedStartOfSection(Map.Section section) {
-    return this.travelDirection == section.getTravelDirection();
-  }
+    Train(int id, int speed, Direction dir,
+          Semaphore topTop, Semaphore topBottom, Semaphore middleTop, Semaphore middleBottom,
+          Semaphore bottomTop, Semaphore bottomBottom, Semaphore leftSide,
+          Semaphore rightSide, Semaphore intersection) {
 
-  private boolean reachedEndOfSection(Map.Section section) {
-    return this.travelDirection == section.getTravelDirection();
-  }
+      this.id = id;
+      this.speed = speed;
+      this.dir = dir;
+      this.topTop = topTop;
+      this.topBottom = topBottom;
+      this.middleTop = middleTop;
+      this.middleBottom = middleBottom;
+      this.bottomTop = bottomTop;
+      this.bottomBottom = bottomBottom;
+      this.leftSide = leftSide;
+      this.rightSide = rightSide;
+      this.intersection = intersection;
 
-  private void waitAndTurnBack() throws Exception {
-    int waitTime = 1000 + (20 * Math.abs(speed));
-    Thread.sleep(waitTime);
-
-    if (this.travelDirection == Map.Direction.TowardsA) {
-      this.travelDirection = Map.Direction.TowardsB;
-    }
-    else {
-      this.travelDirection = Map.Direction.TowardsA;
-    }
-    this.speed = -this.speed;
-  }
-}
-
-class Map {
-  private static HashMap<Position, Section> sensorsToSectionsMapping = null;
-
-  public static void initialize() {
-    sensorsToSectionsMapping = new HashMap<>();
-    Semaphore[] semaphores = new Semaphore[9]; // varför???????????????????????????
-    Position[] switches = new Position[4];
-    Section[] sections = new Section[4];
-    Track[] tracks = new Track[16]; // varför???????????????????????
-
-    for (int i = 0; i < semaphores.length; i++) {
-      semaphores[i] = new Semaphore(1);
-    }
-
-    switches[0] = new Position(3, 11);
-    switches[1] = new Position(4, 9);
-    switches[2] = new Position(15, 9);
-    switches[3] = new Position(17, 7);
-
-    // 4-vägskorsningen
-    sections[0] = new Section(Direction.TowardsB, semaphores[0], new Position(6, 7));
-    sections[1] = new Section(Direction.TowardsB, semaphores[0], new Position(8, 5));
-    sections[2] = new Section(Direction.TowardsA, semaphores[0], new Position(10, 7));
-    sections[3] = new Section(Direction.TowardsA, semaphores[0], new Position(10, 8));
-
-    // Ändra ordning när vi fattar
-    tracks[0] = new Track(Direction.TowardsB, semaphores[1], new Position(5, 11));
-    tracks[1] = new Track(Direction.TowardsB, semaphores[2], new Position(3, 13));
-    tracks[2] = new Track(Direction.TowardsB, semaphores[3], new Position(2, 9));
-    tracks[3] = new Track(Direction.TowardsB, semaphores[4], new Position(13, 9));
-    tracks[4] = new Track(Direction.TowardsB, semaphores[5], new Position(13, 10));
-    tracks[5] = new Track(Direction.TowardsB, semaphores[6], new Position(19, 7));
-    tracks[6] = new Track(Direction.TowardsB, semaphores[7], new Position(16, 3));
-    tracks[7] = new Track(Direction.TowardsB, semaphores[8], new Position(16, 5));
-
-    tracks[8] = new Track(Direction.TowardsA, semaphores[1], new Position(16, 11));
-    tracks[9] = new Track(Direction.TowardsA, semaphores[2], new Position(16, 13));
-    tracks[10] = new Track(Direction.TowardsA, semaphores[3], new Position(1, 11));
-    tracks[11] = new Track(Direction.TowardsA, semaphores[4], new Position(6, 9));
-    tracks[12] = new Track(Direction.TowardsA, semaphores[5], new Position(6, 10));
-    tracks[13] = new Track(Direction.TowardsA, semaphores[6], new Position(17, 9));
-    tracks[14] = new Track(Direction.TowardsA, semaphores[7], new Position(15, 7));
-    tracks[15] = new Track(Direction.TowardsA, semaphores[8], new Position(15, 8));
-
-    tracks[0].addConnection(tracks[2], switches[0], TSimInterface.SWITCH_LEFT);
-    tracks[1].addConnection(tracks[2], switches[0], TSimInterface.SWITCH_RIGHT);
-    tracks[2].addConnection(tracks[3], switches[1], TSimInterface.SWITCH_LEFT);
-    tracks[2].addConnection(tracks[4], switches[1], TSimInterface.SWITCH_RIGHT);
-    tracks[3].addConnection(tracks[5], switches[2], TSimInterface.SWITCH_RIGHT);
-    tracks[4].addConnection(tracks[5], switches[2], TSimInterface.SWITCH_LEFT);
-    tracks[5].addConnection(tracks[6], switches[3], TSimInterface.SWITCH_RIGHT);
-    tracks[5].addConnection(tracks[7], switches[3], TSimInterface.SWITCH_LEFT);
-
-    tracks[10].addConnection(tracks[8], switches[0], TSimInterface.SWITCH_LEFT);
-    tracks[10].addConnection(tracks[9], switches[0], TSimInterface.SWITCH_RIGHT);
-    tracks[11].addConnection(tracks[10], switches[1], TSimInterface.SWITCH_LEFT);
-    tracks[12].addConnection(tracks[10], switches[1], TSimInterface.SWITCH_RIGHT);
-    tracks[13].addConnection(tracks[11], switches[2], TSimInterface.SWITCH_RIGHT);
-    tracks[13].addConnection(tracks[12], switches[2], TSimInterface.SWITCH_LEFT);
-    tracks[14].addConnection(tracks[13], switches[3], TSimInterface.SWITCH_RIGHT);
-    tracks[15].addConnection(tracks[13], switches[3], TSimInterface.SWITCH_LEFT);
-  }
-
-  public static Section getSection(Position sensor) {
-    if (sensorsToSectionsMapping == null) {
-      throw new RuntimeException("Map for TSim is uninitialized!");
-    }
-    return sensorsToSectionsMapping.get(sensor);
-  }
-
-  public static enum Direction {
-    TowardsA,
-    TowardsB;
-  }
-
-  public static class Position {
-    public final int x;
-    public final int y;
-
-    public Position(int x, int y) {
-      this.x = x;
-      this.y = y;
-    }
-
-    @Override
-    public int hashCode() {
-      return x * 100 + y;
-    }
-
-    @Override
-    public boolean equals(Object pos) {
-      return this.hashCode() == pos.hashCode();
-    }
-  }
-
-  public static class Section {
-    private Semaphore semaphore;
-    private Direction travelDirection;
-
-    public Section(Direction travelDirection, Semaphore semaphore, Position sensor) {
-      this.semaphore = semaphore;
-      this.travelDirection = travelDirection;
-      sensorsToSectionsMapping.put(sensor, this);
-    }
-
-    public Direction getTravelDirection() {
-      return this.travelDirection;
-    }
-
-    public boolean tryAcquire() {
-      return semaphore.tryAcquire();
-    }
-
-    public void acquire() {
       try {
-        semaphore.acquire();
-      }
-      catch (InterruptedException e) {
+        tsi.setSpeed(id, speed);
+      } catch (CommandException e) {
         e.printStackTrace();
         System.exit(1);
       }
     }
 
-    public void release() {
-      semaphore.release();
-    }
-  }
-
-  public static class Track extends Section {
-    private ArrayList<Connection> connections;
-
-    public Track(Direction travelDirection, Semaphore semaphore, Position sensor) {
-      super(travelDirection, semaphore, sensor);
-      this.connections = new ArrayList<>();
+    private boolean active(SensorEvent e, int x, int y) {
+      return e.getXpos() == x && e.getYpos() == y &&
+              e.getStatus() == SensorEvent.ACTIVE;
     }
 
-    public void addConnection(Track nextTrack, Position switchPosition, int switchDirection) {
-      connections.add(new Connection(nextTrack, switchPosition, switchDirection));
+    private void stopTrain() throws CommandException {
+      tsi.setSpeed(id, 0);
     }
 
-    public boolean acquireNextTrack() throws CommandException {
-      for (int i = 0; i < connections.size(); i++) {
-        Connection connection = connections.get(i);
-        Track nextTrack = connection.getNextTrack();
+    private void goTrain() throws CommandException {
+      tsi.setSpeed(id, speed);
+    }
 
-        if (i == connections.size() - 1) {
-          nextTrack.acquire();
-          connection.makeRailSwitch();
-          return true;
+    private void switchTrack(int x, int y, int direction) throws CommandException {
+      tsi.setSwitch(x, y, direction);
+    }
+
+    @Override
+    public void run() {
+      try {
+        while (true) {
+          SensorEvent e = tsi.getSensor(id);
+
+          // ---- TOPTOP ----
+          if (active(e,14,7) && dir == Direction.DOWN) {
+            stopTrain();
+            rightSide.acquire();
+            switchTrack(17,7,TSimInterface.SWITCH_RIGHT);
+            goTrain();
+            topTop.release();
+          } else if (active(e,14,7) && dir == Direction.UP) {
+            rightSide.release();
+          }
+
+          // ---- INTERSECTION ----
+          if (((active(e,6,6) || active(e,9,5)) && dir==Direction.DOWN) ||
+                  ((active(e,10,8) || active(e,11,7)) && dir==Direction.UP)) {
+            stopTrain();
+            intersection.acquire();
+            goTrain();
+          } else if (((active(e,6,6) || active(e,9,5)) && dir==Direction.UP) ||
+                  ((active(e,10,8) || active(e,11,7)) && dir==Direction.DOWN)) {
+            intersection.release();
+          }
+
+          // ---- TOPBOTTOM ----
+          if (active(e,15,8) && dir==Direction.DOWN) {
+            stopTrain();
+            rightSide.acquire();
+            goTrain();
+            switchTrack(17,7,TSimInterface.SWITCH_LEFT);
+            topBottom.release();
+          } else if (active(e,15,8) && dir==Direction.UP) {
+            rightSide.release();
+          }
+
+          // ---- RIGHT SIDE ----
+          if (active(e,18,7) && dir==Direction.UP) {
+            if (topTop.tryAcquire()) switchTrack(17,7,TSimInterface.SWITCH_RIGHT);
+            else { topBottom.acquire(); switchTrack(17,7,TSimInterface.SWITCH_LEFT); }
+          }
+
+          if (active(e,16,9) && dir==Direction.DOWN) {
+            if (middleTop.tryAcquire()) switchTrack(15,9,TSimInterface.SWITCH_RIGHT);
+            else { middleBottom.acquire(); switchTrack(15,9,TSimInterface.SWITCH_LEFT); }
+          }
+
+          // ---- BOTTOMTOP ----
+          if (active(e,6,11) && dir==Direction.UP) {
+            stopTrain();
+            leftSide.acquire();
+            goTrain();
+            bottomTop.release();
+            switchTrack(3,11,TSimInterface.SWITCH_LEFT);
+          } else if (active(e,6,11) && dir==Direction.DOWN) {
+            leftSide.release();
+          }
+
+          // ---- BOTTOMBOTTOM ----
+          if (active(e,4,13) && dir==Direction.UP) {
+            stopTrain();
+            leftSide.acquire();
+            goTrain();
+            bottomBottom.release();
+            switchTrack(3,11,TSimInterface.SWITCH_RIGHT);
+          } else if (active(e,4,13) && dir==Direction.DOWN) {
+            leftSide.release();
+          }
+
+          // ---- LEFT SIDE ----
+          if (active(e,2,11) && dir==Direction.DOWN) {
+            if (bottomTop.tryAcquire()) switchTrack(3,11,TSimInterface.SWITCH_LEFT);
+            else { bottomBottom.acquire(); switchTrack(3,11,TSimInterface.SWITCH_RIGHT); }
+          }
+
+          if (active(e,3,9) && dir==Direction.UP) {
+            if (middleTop.tryAcquire()) switchTrack(4,9,TSimInterface.SWITCH_LEFT);
+            else { middleBottom.acquire(); switchTrack(4,9,TSimInterface.SWITCH_RIGHT); }
+          }
+
+          // ---- MIDDLE TOP ----
+          if (active(e,7,9) && dir==Direction.DOWN) {
+            stopTrain();
+            leftSide.acquire();
+            goTrain();
+            switchTrack(4,9,TSimInterface.SWITCH_LEFT);
+            middleTop.release();
+          } else if (active(e,7,9) && dir==Direction.UP) {
+            leftSide.release();
+          }
+
+          if (active(e,12,9) && dir==Direction.UP) {
+            stopTrain();
+            rightSide.acquire();
+            goTrain();
+            switchTrack(15,9,TSimInterface.SWITCH_RIGHT);
+            middleTop.release();
+          } else if (active(e,12,9) && dir==Direction.DOWN) {
+            rightSide.release();
+          }
+
+          // ---- MIDDLE BOTTOM ----
+          if (active(e,9,10) && dir==Direction.UP) {
+            stopTrain(); rightSide.acquire(); goTrain();
+          } else if (active(e,9,10) && dir==Direction.DOWN) {
+            stopTrain(); leftSide.acquire(); goTrain();
+          }
+
+          if (active(e,13,10) && dir==Direction.UP) {
+            switchTrack(15,9,TSimInterface.SWITCH_LEFT);
+            middleBottom.release();
+          } else if (active(e,13,10) && dir==Direction.DOWN) {
+            rightSide.release();
+          }
+
+          if (active(e,6,10) && dir==Direction.DOWN) {
+            switchTrack(4,9,TSimInterface.SWITCH_RIGHT);
+            middleBottom.release();
+          } else if (active(e,6,10) && dir==Direction.UP) {
+            leftSide.release();
+          }
+
+          // ---- STATIONS (HUS) ----
+          if (active(e,15,13) || active(e,15,11) ||
+                  active(e,15,3)  || active(e,15,5)) {
+            stopTrain();
+            sleep(1000 + (20 * Math.abs(speed)));
+            speed = -speed;
+            goTrain();
+            dir = Direction.flip(dir);
+          }
         }
-        else if (nextTrack.tryAcquire()) {
-          connection.makeRailSwitch();
-          return true;
-        }
+      } catch (Exception ex) {
+        System.out.println(ex.getMessage());
       }
-      return false;
-    }
-  }
-
-  public static class Connection {
-    private Track nextTrack;
-    private Position switchPosition;
-    private int switchDirection;
-
-    public Connection(Track nextTrack, Position switchPosition, int switchDirection) {
-      this.nextTrack = nextTrack;
-      this.switchPosition = switchPosition;
-      this.switchDirection = switchDirection;
-    }
-
-    public Track getNextTrack() {
-      return this.nextTrack;
-    }
-
-    public void makeRailSwitch() throws CommandException {
-      TSimInterface.getInstance().setSwitch(switchPosition.x, switchPosition.y, switchDirection);
     }
   }
 }
