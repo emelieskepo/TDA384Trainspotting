@@ -196,25 +196,24 @@ public class Lab1 {
           }
 
           // ---- MIDDLE BOTTOM ----
-          if (active(e,9,10) && dir==Direction.UP) {
-            stopTrain(); rightSide.acquire(); goTrain();
-          } else if (active(e,9,10) && dir==Direction.DOWN) {
-            stopTrain(); leftSide.acquire(); goTrain();
+          if (active(e,6,10) && dir == Direction.DOWN) {
+            // Tåget kommer uppifrån och går neråt
+            switchTrack(4,9, TSimInterface.SWITCH_RIGHT);  // Ställ switchen för att gå rätt
+            middleBottom.acquire();                        // "Lås" sträckan
+            goTrain();
+          } else if (active(e,6,10) && dir == Direction.UP) {
+            leftSide.release();                            // Släpp semaforen när tåget lämnar
           }
 
-          if (active(e,13,10) && dir==Direction.UP) {
-            switchTrack(15,9,TSimInterface.SWITCH_LEFT);
-            middleBottom.release();
-          } else if (active(e,13,10) && dir==Direction.DOWN) {
-            rightSide.release();
+          if (active(e,13,10) && dir == Direction.UP) {
+            // Tåget kommer nerifrån och går uppåt
+            switchTrack(15,9, TSimInterface.SWITCH_LEFT);  // Ställ switchen korrekt
+            middleBottom.release();                         // Släpp semaforen när tåget passerat
+          } else if (active(e,13,10) && dir == Direction.DOWN) {
+            rightSide.release();                            // Släpp semaforen åt andra hållet
           }
 
-          if (active(e,6,10) && dir==Direction.DOWN) {
-            switchTrack(4,9,TSimInterface.SWITCH_RIGHT);
-            middleBottom.release();
-          } else if (active(e,6,10) && dir==Direction.UP) {
-            leftSide.release();
-          }
+
 
           // ---- STATIONS (HUS) ----
           if (active(e,15,13) || active(e,15,11) ||
