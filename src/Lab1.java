@@ -9,9 +9,9 @@ public class Lab1 {
     public Lab1(int speed1, int speed2) {
 
         //creating our semaphores
-        //0 permits: initially blocked, used to coordinate trains so none goes first
-        //1 permit: free from start, one train can go immediately
-        //fair = true --> threads acquire in the order they try (FirstInFirstOut)
+        //permits:0 --> initially blocked, used to coordinate trains so none goes first
+        //permit:1 --> free from start, one train can go immediately
+        //fair:true --> threads acquire in the order they try (FirstInFirstOut)
         Semaphore topTop        = new Semaphore(0, true);
         Semaphore topBottom     = new Semaphore(1, true);
         Semaphore middleTop     = new Semaphore(1, true);
@@ -53,9 +53,8 @@ public class Lab1 {
         private Direction dir;
         private final TSimInterface tsi = TSimInterface.getInstance();
 
-        // alla semaforer
-        private final Semaphore topTop, topBottom, middleTop, middleBottom;
-        private final Semaphore bottomTop, bottomBottom, leftSide, rightSide, intersection;
+        private final Semaphore topTop, topBottom, middleTop, middleBottom,
+                bottomTop, bottomBottom, leftSide, rightSide, intersection;
 
         Train(int id, int speed, Direction dir,
               Semaphore topTop, Semaphore topBottom, Semaphore middleTop, Semaphore middleBottom,
@@ -108,7 +107,7 @@ public class Lab1 {
         public void run() {
             try {
                 while (true) { //Continuously listen for sensor events
-                    SensorEvent e = tsi.getSensor(id); //Each SensorEvent tells which sensor the train just passed
+                    SensorEvent e = tsi.getSensor(id); //Each sensor event tells which sensor the train just passed
 
                     //topTop
                     //DOWN: stop, lock right side, switch right, go, release topTop
