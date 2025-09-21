@@ -5,8 +5,8 @@ import java.util.concurrent.*;
 // java -cp bin Main Lab1.map 18 18
 public class Lab1 {
 
-    private final Train t1;
-    private final Train t2;
+    private final Train train1;
+    private final Train train2;
 
     public Lab1(int speed1, int speed2) {
 
@@ -24,23 +24,24 @@ public class Lab1 {
         Semaphore rightSide     = new Semaphore(1, true);
         Semaphore intersection  = new Semaphore(1, true);
 
-        t1 = new Train(1, speed1, Direction.DOWN,
+        train1 = new Train(1, speed1, Direction.DOWN,
                 topTop, topBottom, middleTop, middleBottom,
                 bottomTop, bottomBottom, leftSide, rightSide, intersection);
 
-        t2 = new Train(2, speed2, Direction.UP,
+        train2 = new Train(2, speed2, Direction.UP,
                 topTop, topBottom, middleTop, middleBottom,
                 bottomTop, bottomBottom, leftSide, rightSide, intersection);
 
-        t1.start();
-        t2.start();
+        train1.start();
+        train2.start();
     }
 
     public enum Direction {
         UP, DOWN;
-        public static Direction flip(Direction d) {
+
+        public static Direction flip(Direction dir) {
             //Flips the direction when arriving at a station
-            if (d == UP) {
+            if (dir == UP) {
                 return DOWN;
             } else {
                 return UP;
@@ -67,14 +68,14 @@ public class Lab1 {
             this.speed = speed;
             this.dir = dir;
             this.topTop = topTop;
+            this.intersection = intersection;
             this.topBottom = topBottom;
-            this.middleTop = middleTop;
-            this.middleBottom = middleBottom;
+            this.rightSide = rightSide;
             this.bottomTop = bottomTop;
             this.bottomBottom = bottomBottom;
             this.leftSide = leftSide;
-            this.rightSide = rightSide;
-            this.intersection = intersection;
+            this.middleTop = middleTop;
+            this.middleBottom = middleBottom;
 
             try {
                 tsi.setSpeed(id, speed);
