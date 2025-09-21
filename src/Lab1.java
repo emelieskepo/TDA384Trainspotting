@@ -1,6 +1,8 @@
 import TSim.*;
 import java.util.concurrent.*;
 
+// run code with
+// java -cp bin Main Lab1.map 18 18
 public class Lab1 {
 
     private final Train t1;
