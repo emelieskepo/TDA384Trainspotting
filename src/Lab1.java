@@ -67,15 +67,16 @@ public class Lab1 {
             this.id = id;
             this.speed = speed;
             this.dir = dir;
-            this.topTop = topTop;
             this.intersection = intersection;
+            this.topTop = topTop;
             this.topBottom = topBottom;
-            this.rightSide = rightSide;
-            this.bottomTop = bottomTop;
-            this.bottomBottom = bottomBottom;
-            this.leftSide = leftSide;
             this.middleTop = middleTop;
             this.middleBottom = middleBottom;
+            this.bottomTop = bottomTop;
+            this.bottomBottom = bottomBottom;
+            this.rightSide = rightSide;
+            this.leftSide = leftSide;
+
 
             try {
                 tsi.setSpeed(id, speed);
@@ -91,20 +92,19 @@ public class Lab1 {
                     e.getStatus() == SensorEvent.ACTIVE;
         }
 
+        //Switches the track at the given coordinates (x, y)
+        private void switchTrack(int x, int y, int direction) throws CommandException {
+            tsi.setSwitch(x, y, direction);
+        }
+        //Starts the train
+        private void goTrain() throws CommandException {
+            tsi.setSpeed(id, speed);
+        }
         //Stops the train
         private void stopTrain() throws CommandException {
             tsi.setSpeed(id, 0);
         }
 
-        //Starts the train
-        private void goTrain() throws CommandException {
-            tsi.setSpeed(id, speed);
-        }
-
-        //Switches the track at the given coordinates (x, y)
-        private void switchTrack(int x, int y, int direction) throws CommandException {
-            tsi.setSwitch(x, y, direction);
-        }
 
         @Override
         public void run() {
@@ -112,13 +112,27 @@ public class Lab1 {
                 while (true) { //Continuously listen for sensor events
                     SensorEvent e = tsi.getSensor(id); //Each sensor event tells which sensor the train just passed
 
+
+
+                    //intersection
+                    //Lock intersection when entering, release when leaving
+                    if (((active(e,6,6) || active(e,9,5)) && dir==Direction.DOWN) ||
+                            ((active(e,10,8) || active(e,11,7)) && dir==Direction.UP)) {
+                        stopTrain();
+                        //Stops the train briefly to acquire semaphores and switch the track,
+                        //preventing collisions or blocking other trains
+                        intersection.acquire();
+                        goTrain();
+                    } else if (((active(e,6,6) || active(e,9,5)) && dir==Direction.UP) ||
+                            ((active(e,10,8) || active(e,11,7)) && dir==Direction.DOWN)) {
+                        intersection.release();
+                    }
+
                     //topTop
                     //DOWN: stop, lock right side, switch right, go, release topTop
                     //UP: release right side when leaving
                     if (active(e,14,7) && dir == Direction.DOWN) {
                         stopTrain();
-                        //Stops the train briefly to acquire semaphores and switch the track,
-                        //preventing collisions or blocking other trains
                         rightSide.acquire();
                         switchTrack(17,7,TSimInterface.SWITCH_RIGHT);
                         goTrain();
@@ -127,17 +141,6 @@ public class Lab1 {
                         rightSide.release();
                     }
 
-                    //intersection
-                    //Lock intersection when entering, release when leaving
-                    if (((active(e,6,6) || active(e,9,5)) && dir==Direction.DOWN) ||
-                            ((active(e,10,8) || active(e,11,7)) && dir==Direction.UP)) {
-                        stopTrain();
-                        intersection.acquire();
-                        goTrain();
-                    } else if (((active(e,6,6) || active(e,9,5)) && dir==Direction.UP) ||
-                            ((active(e,10,8) || active(e,11,7)) && dir==Direction.DOWN)) {
-                        intersection.release();
-                    }
 
                     //topBottom
                     //DOWN: lock right side, switch left, release topBottom
@@ -150,56 +153,6 @@ public class Lab1 {
                         topBottom.release();
                     } else if (active(e,15,8) && dir==Direction.UP) {
                         rightSide.release();
-                    }
-
-                    //rightSide
-                    //Choose switch based on which semaphore is free
-                    if (active(e,18,7) && dir==Direction.UP) {
-                        if (topTop.tryAcquire()) switchTrack(17,7,TSimInterface.SWITCH_RIGHT);
-                        else { topBottom.acquire(); switchTrack(17,7,TSimInterface.SWITCH_LEFT); }
-                    }
-
-                    if (active(e,16,9) && dir==Direction.DOWN) {
-                        if (middleTop.tryAcquire()) switchTrack(15,9,TSimInterface.SWITCH_RIGHT);
-                        else { middleBottom.acquire(); switchTrack(15,9,TSimInterface.SWITCH_LEFT); }
-                    }
-
-                    //bottomTop
-                    //UP: lock left side, release bottomTop, switch left
-                    //DOWN: release left side
-                    if (active(e,6,11) && dir==Direction.UP) {
-                        stopTrain();
-                        leftSide.acquire();
-                        goTrain();
-                        bottomTop.release();
-                        switchTrack(3,11,TSimInterface.SWITCH_LEFT);
-                    } else if (active(e,6,11) && dir==Direction.DOWN) {
-                        leftSide.release();
-                    }
-
-                    //bottomBottom
-                    //UP: lock left side, release bottomBottom, switch right
-                    //DOWN: release left side
-                    if (active(e,4,13) && dir==Direction.UP) {
-                        stopTrain();
-                        leftSide.acquire();
-                        goTrain();
-                        bottomBottom.release();
-                        switchTrack(3,11,TSimInterface.SWITCH_RIGHT);
-                    } else if (active(e,4,13) && dir==Direction.DOWN) {
-                        leftSide.release();
-                    }
-
-                    //leftSide
-                    //Choose switch depending on which semaphore is free
-                    if (active(e,2,11) && dir==Direction.DOWN) {
-                        if (bottomTop.tryAcquire()) switchTrack(3,11,TSimInterface.SWITCH_LEFT);
-                        else { bottomBottom.acquire(); switchTrack(3,11,TSimInterface.SWITCH_RIGHT); }
-                    }
-
-                    if (active(e,3,9) && dir==Direction.UP) {
-                        if (middleTop.tryAcquire()) switchTrack(4,9,TSimInterface.SWITCH_LEFT);
-                        else { middleBottom.acquire(); switchTrack(4,9,TSimInterface.SWITCH_RIGHT); }
                     }
 
                     //middleTop
@@ -247,6 +200,57 @@ public class Lab1 {
                     }
 
 
+                    //bottomTop
+                    //UP: lock left side, release bottomTop, switch left
+                    //DOWN: release left side
+                    if (active(e,6,11) && dir==Direction.UP) {
+                        stopTrain();
+                        leftSide.acquire();
+                        goTrain();
+                        bottomTop.release();
+                        switchTrack(3,11,TSimInterface.SWITCH_LEFT);
+                    } else if (active(e,6,11) && dir==Direction.DOWN) {
+                        leftSide.release();
+                    }
+
+                    //bottomBottom
+                    //UP: lock left side, release bottomBottom, switch right
+                    //DOWN: release left side
+                    if (active(e,4,13) && dir==Direction.UP) {
+                        stopTrain();
+                        leftSide.acquire();
+                        goTrain();
+                        bottomBottom.release();
+                        switchTrack(3,11,TSimInterface.SWITCH_RIGHT);
+                    } else if (active(e,4,13) && dir==Direction.DOWN) {
+                        leftSide.release();
+                    }
+
+                    //rightSide
+                    //Choose switch based on which semaphore is free
+                    if (active(e,18,7) && dir==Direction.UP) {
+                        if (topTop.tryAcquire()) switchTrack(17,7,TSimInterface.SWITCH_RIGHT);
+                        else { topBottom.acquire(); switchTrack(17,7,TSimInterface.SWITCH_LEFT); }
+                    }
+
+                    if (active(e,16,9) && dir==Direction.DOWN) {
+                        if (middleTop.tryAcquire()) switchTrack(15,9,TSimInterface.SWITCH_RIGHT);
+                        else { middleBottom.acquire(); switchTrack(15,9,TSimInterface.SWITCH_LEFT); }
+                    }
+
+                    //leftSide
+                    //Choose switch depending on which semaphore is free
+                    if (active(e,2,11) && dir==Direction.DOWN) {
+                        if (bottomTop.tryAcquire()) switchTrack(3,11,TSimInterface.SWITCH_LEFT);
+                        else { bottomBottom.acquire(); switchTrack(3,11,TSimInterface.SWITCH_RIGHT); }
+                    }
+
+                    if (active(e,3,9) && dir==Direction.UP) {
+                        if (middleTop.tryAcquire()) switchTrack(4,9,TSimInterface.SWITCH_LEFT);
+                        else { middleBottom.acquire(); switchTrack(4,9,TSimInterface.SWITCH_RIGHT); }
+                    }
+
+
                     //Train stations: Stop, wait, reverse speed and direction
                     if (active(e,15,13) || active(e,15,11) ||
                             active(e,15,3)  || active(e,15,5)) {
@@ -257,9 +261,11 @@ public class Lab1 {
                         dir = Direction.flip(dir);
                     }
                 }
-            } catch (Exception ex) {
-                System.out.println(ex.getMessage()); //Print the exception message to the console
             }
+
+            catch (Exception ex) { System.out.println(ex.getMessage());}
+            //Print the exception message to the console
+
         }
     }
 }
