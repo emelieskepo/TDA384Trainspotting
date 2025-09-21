@@ -8,7 +8,10 @@ public class Lab1 {
 
     public Lab1(int speed1, int speed2) {
 
-        // Semaforer = "låsta" spårsektioner
+        //creating our semaphores
+        //0 permits: initially blocked, used to coordinate trains so none goes first
+        //1 permit: free from start, one train can go immediately
+        //fair = true --> threads acquire in the order they try (FirstInFirstOut)
         Semaphore topTop        = new Semaphore(0, true);
         Semaphore topBottom     = new Semaphore(1, true);
         Semaphore middleTop     = new Semaphore(1, true);
@@ -34,10 +37,16 @@ public class Lab1 {
     public enum Direction {
         UP, DOWN;
         public static Direction flip(Direction d) {
-            return (d == UP) ? DOWN : UP;
+            //Flips the direction when arriving at a station
+            if (d == UP) {
+                return DOWN;
+            } else {
+                return UP;
+            }
         }
     }
 
+    //Each train is its own thread
     private class Train extends Thread {
         private final int id;
         private int speed;
@@ -69,24 +78,28 @@ public class Lab1 {
             try {
                 tsi.setSpeed(id, speed);
             } catch (CommandException e) {
-                e.printStackTrace();
-                System.exit(1);
+                e.printStackTrace(); // Print the error to the console
+                System.exit(1); // Stop the program immediately
             }
         }
 
+        //Returns true if a sensor at coordinates (x, y) has just been triggered
         private boolean active(SensorEvent e, int x, int y) {
             return e.getXpos() == x && e.getYpos() == y &&
                     e.getStatus() == SensorEvent.ACTIVE;
         }
 
+        //Stops the train
         private void stopTrain() throws CommandException {
             tsi.setSpeed(id, 0);
         }
 
+        //Starts the train
         private void goTrain() throws CommandException {
             tsi.setSpeed(id, speed);
         }
 
+        //Switches the track at the given coordinates (x, y)
         private void switchTrack(int x, int y, int direction) throws CommandException {
             tsi.setSwitch(x, y, direction);
         }
@@ -94,12 +107,16 @@ public class Lab1 {
         @Override
         public void run() {
             try {
-                while (true) {
-                    SensorEvent e = tsi.getSensor(id);
+                while (true) { //Continuously listen for sensor events
+                    SensorEvent e = tsi.getSensor(id); //Each SensorEvent tells which sensor the train just passed
 
-                    // ---- TOPTOP ----
+                    //topTop
+                    //DOWN: stop, lock right side, switch right, go, release topTop
+                    //UP: release right side when leaving
                     if (active(e,14,7) && dir == Direction.DOWN) {
                         stopTrain();
+                        //Stops the train briefly to acquire semaphores and switch the track,
+                        //preventing collisions or blocking other trains
                         rightSide.acquire();
                         switchTrack(17,7,TSimInterface.SWITCH_RIGHT);
                         goTrain();
@@ -108,7 +125,8 @@ public class Lab1 {
                         rightSide.release();
                     }
 
-                    // ---- INTERSECTION ----
+                    //intersection
+                    //Lock intersection when entering, release when leaving
                     if (((active(e,6,6) || active(e,9,5)) && dir==Direction.DOWN) ||
                             ((active(e,10,8) || active(e,11,7)) && dir==Direction.UP)) {
                         stopTrain();
@@ -119,7 +137,9 @@ public class Lab1 {
                         intersection.release();
                     }
 
-                    // ---- TOPBOTTOM ----
+                    //topBottom
+                    //DOWN: lock right side, switch left, release topBottom
+                    //UP: release right side
                     if (active(e,15,8) && dir==Direction.DOWN) {
                         stopTrain();
                         rightSide.acquire();
@@ -130,7 +150,8 @@ public class Lab1 {
                         rightSide.release();
                     }
 
-                    // ---- RIGHT SIDE ----
+                    //rightSide
+                    //Choose switch based on which semaphore is free
                     if (active(e,18,7) && dir==Direction.UP) {
                         if (topTop.tryAcquire()) switchTrack(17,7,TSimInterface.SWITCH_RIGHT);
                         else { topBottom.acquire(); switchTrack(17,7,TSimInterface.SWITCH_LEFT); }
@@ -141,7 +162,9 @@ public class Lab1 {
                         else { middleBottom.acquire(); switchTrack(15,9,TSimInterface.SWITCH_LEFT); }
                     }
 
-                    // ---- BOTTOMTOP ----
+                    //bottomTop
+                    //UP: lock left side, release bottomTop, switch left
+                    //DOWN: release left side
                     if (active(e,6,11) && dir==Direction.UP) {
                         stopTrain();
                         leftSide.acquire();
@@ -152,7 +175,9 @@ public class Lab1 {
                         leftSide.release();
                     }
 
-                    // ---- BOTTOMBOTTOM ----
+                    //bottomBottom
+                    //UP: lock left side, release bottomBottom, switch right
+                    //DOWN: release left side
                     if (active(e,4,13) && dir==Direction.UP) {
                         stopTrain();
                         leftSide.acquire();
@@ -163,7 +188,8 @@ public class Lab1 {
                         leftSide.release();
                     }
 
-                    // ---- LEFT SIDE ----
+                    //leftSide
+                    //Choose switch depending on which semaphore is free
                     if (active(e,2,11) && dir==Direction.DOWN) {
                         if (bottomTop.tryAcquire()) switchTrack(3,11,TSimInterface.SWITCH_LEFT);
                         else { bottomBottom.acquire(); switchTrack(3,11,TSimInterface.SWITCH_RIGHT); }
@@ -174,7 +200,8 @@ public class Lab1 {
                         else { middleBottom.acquire(); switchTrack(4,9,TSimInterface.SWITCH_RIGHT); }
                     }
 
-                    // ---- MIDDLE TOP ----
+                    //middleTop
+                    //Lock left/right side when entering, release when leaving, switch track
                     if (active(e,7,9) && dir==Direction.DOWN) {
                         stopTrain();
                         leftSide.acquire();
@@ -195,7 +222,8 @@ public class Lab1 {
                         rightSide.release();
                     }
 
-                    // ---- MIDDLE BOTTOM ----
+                    //middleBottom
+                    //Lock/release sides and switch track depending on direction
                     if (active(e,13,10) && dir==Direction.UP) {
                         stopTrain(); rightSide.acquire(); goTrain();
                     } else if (active(e,6,10) && dir==Direction.DOWN) {
@@ -216,20 +244,20 @@ public class Lab1 {
                         leftSide.release();
                     }
 
-                    // ---- STATIONS (HUS) ----
+
+                    //Train stations: Stop, wait, reverse speed and direction
                     if (active(e,15,13) || active(e,15,11) ||
                             active(e,15,3)  || active(e,15,5)) {
                         stopTrain();
-                        sleep(1000 + (20 * Math.abs(speed)));
+                        sleep(1000 + (20 * Math.abs(speed))); //Wait 1-2 seconds at each station
                         speed = -speed;
                         goTrain();
                         dir = Direction.flip(dir);
                     }
                 }
             } catch (Exception ex) {
-                System.out.println(ex.getMessage());
+                System.out.println(ex.getMessage()); //Print the exception message to the console
             }
         }
     }
 }
-// java -cp bin Main Lab1.map 15 15
